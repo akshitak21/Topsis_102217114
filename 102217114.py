@@ -1,104 +1,53 @@
-import pandas as pd
-import math
-import numpy as np
 import sys
-import os
+import pandas as pd
+import numpy as np
 
-class Topsis:
-    def __init__(self, filename):
-        # Load the file based on extension
-        if os.path.isfile(filename):
-            if filename.endswith('.csv'):
-                self.data = pd.read_csv(filename)
-            elif filename.endswith('.xlsx'):
-                self.data = pd.read_excel(filename)
-            else:
-                print("Unsupported file format. Please provide a CSV or XLSX file.")
-                sys.exit(1)
-        else:
-            print("File not found.")
-            sys.exit(1)
-        
-        # Extract the decision matrix
-        self.decision_matrix = self.data.iloc[:, 1:].values
-        self.features = len(self.decision_matrix[0])
-        self.samples = len(self.decision_matrix)
+def process_data(input, weights, impacts, output):
+    try:
+        # Reading the input file into a pandas DataFrame
+        data = pd.read_csv(input)
 
-    def evaluate(self, weights=None, impacts=None):
-        if weights is None:
-            weights = [1] * self.features
-        if impacts is None:
-            impacts = ["+"] * self.features
+        # Parsing weights and impacts
+        weights = np.array(list(map(float, weights.split(','))))
+        impacts = impacts.split(',')
 
-        d = self.decision_matrix
-        features = self.features
-        samples = self.samples
+        if len(weights) != len(impacts) or len(weights) != data.shape[1]:
+            raise ValueError("The number of weights and impacts must match the number of columns in the DataFrame.")
 
-        # Normalize the decision matrix and apply weights
-        for i in range(features):
-            norm_factor = math.sqrt(sum(d[:, i] ** 2))
-            for j in range(samples):
-                d[j, i] = (d[j, i] / norm_factor) * weights[i]
+        # Normalize the data
+        normalized_data = data / np.sqrt((data**2).sum())
 
-        # Calculate ideal best and worst
-        ideal_best = []
-        ideal_worst = []
-        for i in range(features):
-            if impacts[i] == "+":
-                ideal_best.append(max(d[:, i]))
-                ideal_worst.append(min(d[:, i]))
-            else:
-                ideal_best.append(min(d[:, i]))
-                ideal_worst.append(max(d[:, i]))
+        # Applying weights
+        weighted_data = normalized_data * weights
 
-        # Calculate distances to ideal best and worst
-        scores = []
-        for i in range(samples):
-            distance_best = math.sqrt(sum((d[i, :] - ideal_best) ** 2))
-            distance_worst = math.sqrt(sum((d[i, :] - ideal_worst) ** 2))
-            score = distance_worst / (distance_best + distance_worst)
-            scores.append(score)
+        # Adjust for impacts
+        for i, impact in enumerate(impacts):
+            if impact == '-':
+                weighted_data.iloc[:, i] = -weighted_data.iloc[:, i]
 
-        # Add scores and ranks to the original dataset
-        self.data["Topsis Score"] = scores
-        self.data["Rank"] = self.data["Topsis Score"].rank(ascending=False).astype(int)
+        # Calculate scores (example: sum of weighted values per row)
+        scores = weighted_data.sum(axis=1)
+        data['Score'] = scores
 
-        return self.data
+        # Saving the result to the output file
+        data.to_csv(output, index=False)
 
+        print(f"Data has been processed and saved to {output}.")
 
-def main():
-    # Ensure correct number of parameters
-    if len(sys.argv) != 5:
-        print("Incorrect number of parameters. Usage:")
-        print("python <script_name.py> <input_file> <weights> <impacts> <output_file>")
-        sys.exit(1)
-
-    # Read arguments
-    input_file = sys.argv[1]
-    weights = list(map(float, sys.argv[2].split(',')))
-    impacts = sys.argv[3].split(',')
-    output_file = sys.argv[4]
-
-    # Validate weights and impacts
-    if len(weights) != len(impacts):
-        print("Error: The number of weights and impacts must match.")
-        sys.exit(1)
-
-    # Run Topsis and save output
-    topsis = Topsis(input_file)
-    result = topsis.evaluate(weights, impacts)
-    
-    # Save output based on the extension of the input file
-    if output_file.endswith('.csv'):
-        result.to_csv(output_file, index=False)
-    elif output_file.endswith('.xlsx'):
-        result.to_excel(output_file, index=False)
-    else:
-        print("Unsupported output file format. Please use CSV or XLSX.")
-        sys.exit(1)
-
-    print(f"Output saved to {output_file}")
-
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    main()
+    # Ensure the correct number of arguments
+    if len(sys.argv) != 5:
+        print("Usage: python <script_name.py> <input> <weights> <impacts> <output>")
+        sys.exit(1)
+
+    # Parse command-line arguments
+    input = sys.argv[1]
+    weights = sys.argv[2]
+    impacts = sys.argv[3]
+    output = sys.argv[4]
+
+    # Call the processing function
+    process_data(input, weights, impacts, output)
